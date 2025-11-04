@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genreclassifier"
+version = "0.1.0"
+description = "MIDI file genre classification package"
+authors = [{name = "Austin Hwang"}]
+readme = "README.md"
