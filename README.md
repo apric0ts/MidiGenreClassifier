@@ -32,3 +32,15 @@ Navigate to this repo's directory, and:
 ```
 pip install -r requirements.txt
 ```
+
+## Acknowledgements
+
+This work used the following datasets:
+- Lakh MIDI dataset
+  - A description can be found [here](https://colinraffel.com/projects/lmd/).
+  - We utilized a subset of the Lakh MIDI dataset from Kaggle, aligned to entries in the [Million Song Dataset ](http://millionsongdataset.com/)
+https://www.tagtraum.com/msd_genre_datasets.html
+- tagtraum genre dataset
+  - A description and download link can be found [here](https://www.tagtraum.com/msd_genre_datasets.html)
+
+
