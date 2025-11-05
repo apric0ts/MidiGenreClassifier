@@ -14,16 +14,21 @@ def get_all_track_information(
     midi_files_path: Path | str,
     match_scores_path: Path | str,
     genres_path: Path | str,
-    cache_path: Path | str = "midi_features_cache.pkl",
+    cache_path: Path | str | None = "midi_features_cache.pkl",
 ) -> list[Track]:
 
-    cached = utils._load_pickle(cache_path)
-    if cached is not None:
-        print(f"Loaded {len(cached)} tracks from cache")
-        return cached
+    if cache_path:
+        cached = utils._load_pickle(cache_path)
+        if cached is not None:
+            print(f"Loaded {len(cached)} tracks from cache")
+            return cached
 
     # Features dict
-    midi_features = dict(_extract_midi_files(midi_files_path, match_scores_path))
+    midi_features = dict(_extract_midi_files(
+        midi_files_path=midi_files_path,
+        match_scores_path=match_scores_path,
+        limit=9999999999999
+    ))
 
     # Iterate over features dict, creating tracks
     tracks: list[Track] = []
@@ -38,8 +43,9 @@ def get_all_track_information(
                     )
                 )
 
-    utils._cache_pickle(tracks, cache_path)
-    print(f"Saved {len(tracks)} tracks to cache: {cache_path}")
+    if cache_path:
+        utils._cache_pickle(tracks, cache_path)
+        print(f"Saved {len(tracks)} tracks to cache: {cache_path}")
 
 
     return tracks
@@ -67,6 +73,7 @@ def _extract_midi_files(
 
     files_walked: int = 0
 
+    print("Analyzing MIDI files...")
     for root, dirs, files in tqdm(os.walk(midi_files_path)):
         for file in files:
             if files_walked >= limit:
@@ -116,6 +123,7 @@ def _extract_genres(genres_path: Path | str) -> Generator[str, list[str]]:
     malformed_dataset_lines: list[str] = []
 
     # Open cd1 dataset
+    print("Extracting genres...")
     with open(genres_path) as f:
         for line in tqdm(f.readlines()):
             # Only parse lines that are not commented out
