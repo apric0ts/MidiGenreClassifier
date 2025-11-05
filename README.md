@@ -33,6 +33,12 @@ Navigate to this repo's directory, and:
 pip install -r requirements.txt
 ```
 
+In the folder containing this repo, download the following files:
+- [CD1 Genre Ground Truth](https://www.tagtraum.com/msd_genre_datasets.html)
+- [Lakh Midi Kaggle Dataset](https://www.kaggle.com/datasets/imsparsh/lakh-midi-clean?resource=download)
+- [Match Scores](https://colinraffel.com/projects/lmd/)
+  - A json file which lists the match confidence score for every match in LMD-matched and LMD-aligned.
+
 ## Acknowledgements
 
 This work used the following datasets:
