@@ -1,15 +1,128 @@
 import os
-
+import json
+import hashlib
 from pathlib import Path
+from typing import Generator
+
 import pretty_midi
 
+from features import Track, MidiFeatures
+
+
+def get_all_track_information(
+    midi_files_path: Path | str,
+    match_scores_path: Path | str,
+    genres_path: Path | str,
+) -> list[Track]:
+
+    # Features dict
+    midi_features = dict(_extract_midi_files(midi_files_path, match_scores_path))
+
+    # Iterate over features dict, creating tracks
+    tracks: list[Track] = []
+    for track_id, genres in _extract_genres(genres_path):
+        if track_id in midi_features:
+            for genre in genres:  # multiple possible genres
+                tracks.append(
+                    Track(
+                        track_id=track_id,
+                        genre=genre,
+                        features=midi_features[track_id],
+                    )
+                )
+
+    return tracks
+
+###
+# Helpers
+###
+
+def _md5(path: Path | str) -> str:
+    with open(path, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+
+def _md5_to_track_id(path: Path | str) -> dict[str, str]:
+
+    with open(path) as f:
+        match_data = json.load(f)
+
+    md5_to_msd = {}
+    for msd_id, midis in match_data.items():
+        for midi_md5 in midis:
+            md5_to_msd[midi_md5] = msd_id
 
 
 
-def extract_genres_from_dataset(path: Path):
+def _extract_midi_files(midi_files_path: Path | str, match_scores_path: Path | str) -> Generator[str, MidiFeatures]:
+    """
+    Extracts features from MIDI file in the given directory
+    https://www.kaggle.com/datasets/imsparsh/lakh-midi-clean?resource=download
+    """
+
+    md5_to_track_id: dict[str, str] = _md5_to_track_id(match_scores_path)
+
+    # track_id_to_features: dict[str, MidiFeatures] = {}
+
+    for root, dirs, files in os.walk(midi_files_path):
+        for file in files:
+            if file.endswith("midi") or file.endswith("mid"):
+                full_path = os.path.join(root, file)
+                midi_data = pretty_midi.PrettyMIDI(full_path)
+
+                # Extract solely the key signatures from the `pretty_midi.KeySignature`
+                key_signatures: list[int] = [data.key_number for data in midi_data.key_signature_changes]
+
+                # Extract solely the time signature from the `pretty_midi.TimeSignature`
+                time_signatures = list[tuple[int, int]] = [(data.numerator, data.denominator) for data in midi_data.key_signature_changes]
+
+                lyrics: bool = len(midi_data) > 0
+
+                features = MidiFeatures(
+                    tempo = midi_data.estimate_tempo(),
+                    key_signatures = key_signatures,
+                    time_signatures = time_signatures,
+                    lyrics = lyrics,
+                    length = midi_data.get_end_time()
+                )
+
+                track_id = md5_to_track_id[_md5(full_path)]
+
+                yield track_id, features
+
+
+def _extract_genres(genres_path: Path | str) -> Generator[str, list[str]]:
     """
     Extracts genres from the CD1 Genre Ground Truth dataset from https://www.tagtraum.com/msd_genre_datasets.html
     at the given path on local machine
     """
-    pass
-    
+
+    track_id_to_genres: dict[str, list[str]] = {}
+    malformed_dataset_lines: list[str] = []
+
+    # Open cd1 dataset
+    with open(genres_path) as f:
+        for line in f.readlines():
+            # Only parse lines that are not commented out
+            if line[0] == "#":
+                continue
+
+            # Lines are formatted like so:
+            # TRACK_ID GENRE1
+            # TRACK_ID GENRE1 GENRE2
+            split_lines = line.split()
+            track = split_lines[0]
+            genres: list[str] = split_lines[1:] # a list of 
+
+            assert len(split_lines) >= 1
+
+            try:
+                assert len(genres) >= 1, "This track has no genres"
+            except AssertionError:
+                malformed_dataset_lines.append(track)
+                continue
+
+            yield track, genres
+
+    print(f"Malformed labels: {malformed_dataset_lines}")
+
