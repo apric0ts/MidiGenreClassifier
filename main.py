@@ -28,7 +28,12 @@ if __name__ == "__main__":
     genres_path = os.path.join(parent_dir, "msd_tagtraum_cd1.cls")
 
 
-    all_track_info: list[gc.Track] = gc.get_all_track_information(midi_files_path, match_scores_path, genres_path)
+    all_track_info: list[gc.Track] = gc.get_all_track_information(
+        midi_files_path, 
+        match_scores_path, 
+        genres_path, 
+        cache_path = "midi_features_cache_large.pkl"
+    )
     
 
     # Exmaples of how to use:
