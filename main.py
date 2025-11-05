@@ -4,6 +4,8 @@ import genreclassifier as gc
 
 import numpy as np
 
+from collections import Counter
+
 if __name__ == "__main__":
 
     """
@@ -33,6 +35,9 @@ if __name__ == "__main__":
     tempos = np.array([track.features.tempo for track in all_track_info])
 
     print(tempos.min(), tempos.max(), tempos.mean())
+
+    genres = Counter([track.genre for track in all_track_info])
+    print(genres)
 
     
         

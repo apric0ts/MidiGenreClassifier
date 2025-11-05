@@ -1,6 +1,5 @@
 import os
-import json
-import hashlib
+
 from pathlib import Path
 from typing import Generator
 
@@ -8,7 +7,7 @@ from tqdm import tqdm
 import pretty_midi
 
 from .features import Track, MidiFeatures
-from .utils import _load_pickle, _cache_pickle
+from . import utils 
 
 
 def get_all_track_information(
@@ -18,7 +17,7 @@ def get_all_track_information(
     cache_path: Path | str = "midi_features_cache.pkl",
 ) -> list[Track]:
 
-    cached = _load_pickle(cache_path)
+    cached = utils._load_pickle(cache_path)
     if cached is not None:
         print(f"Loaded {len(cached)} tracks from cache")
         return cached
@@ -39,7 +38,7 @@ def get_all_track_information(
                     )
                 )
 
-    _cache_pickle(tracks, cache_path)
+    utils._cache_pickle(tracks, cache_path)
     print(f"Saved {len(tracks)} tracks to cache: {cache_path}")
 
 
@@ -49,26 +48,7 @@ def get_all_track_information(
 # Helpers
 ###
 
-def _md5(path: Path | str) -> str:
-    # use chunked reading to reduce memory use
-    h = hashlib.md5()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):  # 1 MB chunks
-            h.update(chunk)
-    return h.hexdigest()
 
-
-def _md5_to_track_id(path: Path | str) -> dict[str, str]:
-
-    with open(path) as f:
-        match_data = json.load(f)
-
-    md5_to_msd = {}
-    for msd_id, midis in match_data.items():
-        for midi_md5 in midis:
-            md5_to_msd[midi_md5] = msd_id
-
-    return md5_to_msd
 
 
 
@@ -82,7 +62,7 @@ def _extract_midi_files(
     https://www.kaggle.com/datasets/imsparsh/lakh-midi-clean?resource=download
     """
 
-    md5_to_track_id: dict[str, str] = _md5_to_track_id(match_scores_path)
+    md5_to_track_id: dict[str, str] = utils._md5_to_track_id(match_scores_path)
     known_md5s = set(md5_to_track_id.keys())  # for O(1) lookups
 
     files_walked: int = 0
@@ -94,7 +74,7 @@ def _extract_midi_files(
             if file.endswith("midi") or file.endswith("mid"):
                 full_path = os.path.join(root, file)
                 try:
-                    md5 = _md5(full_path)
+                    md5 = utils._md5(full_path)
                     if md5 not in known_md5s:
                         continue
 
