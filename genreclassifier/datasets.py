@@ -14,7 +14,8 @@ def get_all_track_information(
     midi_files_path: Path | str,
     match_scores_path: Path | str,
     genres_path: Path | str,
-    cache_path: Path | str | None = "midi_features_cache.pkl",
+    cache_path: Path | str | None = None,
+    files_walked_count: int | None = None
 ) -> list[Track]:
 
     if cache_path:
@@ -27,7 +28,7 @@ def get_all_track_information(
     midi_features = dict(_extract_midi_files(
         midi_files_path=midi_files_path,
         match_scores_path=match_scores_path,
-        limit=9999999999999
+        limit=files_walked_count
     ))
 
     # Iterate over features dict, creating tracks
@@ -54,14 +55,36 @@ def get_all_track_information(
 # Helpers
 ###
 
+def _extract_data_from_midi(midi_file_path: Path | str):
+    midi_data = pretty_midi.PrettyMIDI(midi_file_path)
 
+    # Extract list of instruments from the `pretty_midi.Instrument`
+    instruments: list[int] = [data.program for data in midi_data.instruments]
+    pretty_midi.Instrument
 
+    # Extract solely the key signatures from the `pretty_midi.KeySignature` 
+    key_signatures: list[int] = [data.key_number for data in midi_data.key_signature_changes]
+
+    # Extract solely the time signature from the `pretty_midi.TimeSignature`
+    time_signatures: list[tuple[int, int]] = [(data.numerator, data.denominator) for data in midi_data.time_signature_changes]
+
+    lyrics: bool = len(midi_data.lyrics) > 0
+
+    features = MidiFeatures(
+        tempo = midi_data.estimate_tempo(),
+        instruments = instruments,
+        key_signatures = key_signatures,
+        time_signatures = time_signatures,
+        lyrics = lyrics,
+        length = midi_data.get_end_time()
+    )
+    return features
 
 
 def _extract_midi_files(
     midi_files_path: Path | str,
     match_scores_path: Path | str,
-    limit: int = 500,
+    limit: int | None = None,
 ) -> Generator[str, MidiFeatures]:
     """
     Extracts features from MIDI file in the given directory
@@ -76,7 +99,7 @@ def _extract_midi_files(
     print("Analyzing MIDI files...")
     for root, dirs, files in tqdm(os.walk(midi_files_path)):
         for file in files:
-            if files_walked >= limit:
+            if limit is not None and files_walked >= limit:
                 return
             if file.endswith("midi") or file.endswith("mid"):
                 full_path = os.path.join(root, file)
@@ -85,23 +108,7 @@ def _extract_midi_files(
                     if md5 not in known_md5s:
                         continue
 
-                    midi_data = pretty_midi.PrettyMIDI(full_path)
-
-                    # Extract solely the key signatures from the `pretty_midi.KeySignature`
-                    key_signatures: list[int] = [data.key_number for data in midi_data.key_signature_changes]
-
-                    # Extract solely the time signature from the `pretty_midi.TimeSignature`
-                    time_signatures: list[tuple[int, int]] = [(data.numerator, data.denominator) for data in midi_data.time_signature_changes]
-
-                    lyrics: bool = len(midi_data.lyrics) > 0
-
-                    features = MidiFeatures(
-                        tempo = midi_data.estimate_tempo(),
-                        key_signatures = key_signatures,
-                        time_signatures = time_signatures,
-                        lyrics = lyrics,
-                        length = midi_data.get_end_time()
-                    )
+                    features = _extract_data_from_midi(midi_file_path=full_path)
 
                     track_id = md5_to_track_id[md5]
 
@@ -110,7 +117,8 @@ def _extract_midi_files(
 
                 except Exception as e:
                     pass
-                
+        
+    print(f"Walked {files_walked} files")
 
 
 def _extract_genres(genres_path: Path | str) -> Generator[str, list[str]]:
@@ -119,7 +127,6 @@ def _extract_genres(genres_path: Path | str) -> Generator[str, list[str]]:
     at the given path on local machine
     """
 
-    track_id_to_genres: dict[str, list[str]] = {}
     malformed_dataset_lines: list[str] = []
 
     # Open cd1 dataset
