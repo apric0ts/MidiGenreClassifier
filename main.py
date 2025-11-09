@@ -1,11 +1,11 @@
 
 import os
-import genreclassifier as gc
+from collections import Counter
 
 import numpy as np
 
-from collections import Counter
-from dataclasses import fields
+import genreclassifier as gc
+
 
 if __name__ == "__main__":
 
