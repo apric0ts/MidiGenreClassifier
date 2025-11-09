@@ -5,7 +5,6 @@ from typing import Generator
 
 from tqdm import tqdm
 import pretty_midi
-
 from .features import Track, MidiFeatures
 from . import utils 
 
@@ -17,6 +16,14 @@ def get_all_track_information(
     cache_path: Path | str | None = None,
     files_walked_count: int | None = None
 ) -> list[Track]:
+    """
+    Get a list of tracks, with associated genres, from the given local paths.
+
+    Options available to:
+    - cache the saved tracks from previous runs, if the local files have already
+    been analyzed once
+    - limit the number of files counted
+    """
 
     if cache_path:
         cached = utils._load_pickle(cache_path)
