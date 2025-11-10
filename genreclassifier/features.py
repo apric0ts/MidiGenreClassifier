@@ -70,8 +70,9 @@ def extract_feature_vector(features: MidiFeatures) -> np.ndarray:
     for k in features.key_signatures:
         key_vec[k] = 1.0
 
-
-    # Time signatures: encode as average numerator/denominator (simple baseline)
+    # Time signatures
+    # encode as average numerator/denominator over the whole piece (don't know if this is the best thing to do
+    # but I'd assume the time signatures don't change much over the whole piece?)
     if features.time_signatures:
         numerators, denominators = zip(*features.time_signatures)
         avg_num = np.mean(numerators)
