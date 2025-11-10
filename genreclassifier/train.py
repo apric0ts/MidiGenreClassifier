@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 import numpy as np
 
-from .features import Track, extract_feature_vector
+from .features import Track
 
 
 class TrackDataset(Dataset):
@@ -18,7 +18,7 @@ class TrackDataset(Dataset):
         genre_to_idx = {g: i for i, g in enumerate(genres)}
 
         for t in tracks:
-            self.X.append(extract_feature_vector(t.features))
+            self.X.append((t.features.extract_feature_vector()))
             self.y.append(genre_to_idx[t.genre])
 
         self.X = torch.tensor(np.array(self.X), dtype=torch.float32) # float64 to match extract_feature_vector 
