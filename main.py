@@ -27,7 +27,7 @@ if __name__ == "__main__":
     genres_path = os.path.join(parent_dir, "msd_tagtraum_cd1.cls")
 
 
-    all_track_info: list[gc.Track] = gc.get_all_track_information(
+    tracks: list[gc.Track] = gc.get_all_track_information(
         midi_files_path, 
         match_scores_path, 
         genres_path, 
@@ -39,22 +39,27 @@ if __name__ == "__main__":
     # Examples of how to use:
 
     # Get min, max, mean of all track tempos
-    tempos = np.array([track.features.tempo for track in all_track_info])
+    tempos = np.array([track.features.tempo for track in tracks])
     print(tempos.min(), tempos.max(), tempos.mean())
 
     # Get number of instances of each genre across all tracks
-    genres = Counter([track.genre for track in all_track_info])
+    genres = Counter([track.genre for track in tracks])
     print(genres)
     print(f"There are {len(genres)} unique genres across these tracks")
 
 
     # Get number of instances of each instrument across all tracks
     instrument_ids = []
-    for track in all_track_info:
+    for track in tracks:
         instrument_ids.extend([int(x) for x in track.features.instruments]) # instruments represented as np.int64
 
     instruments = Counter([gc.PROGRAM_ID_TO_INSTRUMENT_NAME[id] for id in instrument_ids])
     print(instruments)
     print(f"There are {len(instruments)} unique instruments across these tracks")
     
-        
+    
+    # Try out the nn stuff:
+    dataset = gc.TrackDataset(tracks)
+
+    input_dim = dataset.X.shape[1] # dataset.X is [num_tracks, num_features]
+    model = gc.TrackToGenreMLP(input_dim=input_dim, num_classes=len(genres))
