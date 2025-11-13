@@ -25,7 +25,7 @@ class TrackDataset(Dataset):
         self.y = torch.tensor(np.array(self.y), dtype=torch.long)
 
     def __len__(self):
-        assert len(self.x) == len(self.y)
+        assert len(self.X) == len(self.y)
         return len(self.y)
 
     def __getitem__(self, idx):
