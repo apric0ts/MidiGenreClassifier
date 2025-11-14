@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pathlib import Path
 from typing import Generator
@@ -97,6 +98,17 @@ def _extract_data_from_midi(midi_file_path: Path | str):
     return features
 
 
+
+def _midi_worker(job):
+    """Top-level function so it can be pickled for multiprocessing."""
+    track_id, full_path = job
+    try:
+        features = _extract_data_from_midi(full_path)
+        return (track_id, features)
+    except Exception:
+        return None
+
+
 def _extract_midi_files(
     midi_files_path: Path | str,
     match_scores_path: Path | str,
@@ -105,50 +117,50 @@ def _extract_midi_files(
 ) -> Generator[str, MidiFeatures]:
     """
     Extracts features from MIDI files located in the LMD-matched directory structure.
-
-    Expected directory pattern:
-    lmd_matched/X/Y/Z/TRXXXX.../
-        ├── file1.mid
-        ├── file2.mid
-        └── ...
-
-    Where the folder name 'TRXXXX...' is the MSD track_id.
     """
-
-    files_walked: int = 0
 
     print("Analyzing LMD-matched MIDI files...")
     assert valid_track_ids is not None
+    valid_track_ids = set(valid_track_ids)
 
-    for root, dirs, files in tqdm(os.walk(midi_files_path)):
+    jobs = []
+    files_walked = 0
+
+    # Collect jobs
+    for root, dirs, files in os.walk(midi_files_path):
         for file in files:
+
             if not (file.endswith(".mid") or file.endswith(".midi")):
                 continue
 
             if limit is not None and files_walked >= limit:
-                print(f"Reached file limit: {limit}")
-                return
+                break
 
             full_path = os.path.join(root, file)
+            track_id = os.path.basename(os.path.dirname(full_path))
 
-            try:
-                track_id = os.path.basename(os.path.dirname(full_path))
-
-                if not track_id.startswith("TR"):
-                    continue
-
-                if track_id not in valid_track_ids:
-                    continue
-
-                features = _extract_data_from_midi(full_path)
-
-                files_walked += 1
-                yield track_id, features
-
-            except Exception:
+            if not track_id.startswith("TR"):
                 continue
 
-    print(f"Walked {files_walked} MIDI files.")
+            if track_id not in valid_track_ids:
+                continue
+
+            jobs.append((track_id, full_path))
+            files_walked += 1
+
+    print(f"Queued {len(jobs)} MIDI files for multiprocessing...")
+
+
+    # Execute all the jobs, multiprocess
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(_midi_worker, job) for job in jobs]
+
+        for f in tqdm(as_completed(futures), total=len(futures)):
+            result = f.result()
+            if result is not None:
+                yield result
+
+    print(f"Walked {len(jobs)} MIDI files.")
 
 
 
