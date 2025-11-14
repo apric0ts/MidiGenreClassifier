@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
     # Project root directory
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    midi_files_path = os.path.join(parent_dir, "MidiFiles")
+    midi_files_path = os.path.join(parent_dir, "lmd_matched")
     match_scores_path = os.path.join(parent_dir, "match_scores.json")
     genres_path = os.path.join(parent_dir, "msd_tagtraum_cd1.cls")
 
@@ -31,7 +31,7 @@ if __name__ == "__main__":
         midi_files_path, 
         match_scores_path, 
         genres_path, 
-        cache_path = "midi_features_cache_large.pkl",
+        cache_path = "midi_features_cache.pkl",
         files_walked_count=None # change this number to adjust the breadth of midi files we're analyzing. None means get all info
     )
     
