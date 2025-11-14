@@ -31,11 +31,20 @@ def get_all_track_information(
             print(f"Loaded {len(cached)} tracks from cache")
             return cached
 
+    valid_track_ids = set()
+    with open(genres_path) as f:
+        for line in f:
+            if not line.startswith("#"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    valid_track_ids.add(parts[0])
+
     # Features dict
     midi_features = dict(_extract_midi_files(
         midi_files_path=midi_files_path,
         match_scores_path=match_scores_path,
-        limit=files_walked_count
+        limit=files_walked_count,
+        valid_track_ids=valid_track_ids
     ))
 
     # Iterate over features dict, creating tracks
@@ -91,41 +100,56 @@ def _extract_data_from_midi(midi_file_path: Path | str):
 def _extract_midi_files(
     midi_files_path: Path | str,
     match_scores_path: Path | str,
+    valid_track_ids: list,
     limit: int | None = None,
 ) -> Generator[str, MidiFeatures]:
     """
-    Extracts features from MIDI file in the given directory
-    https://www.kaggle.com/datasets/imsparsh/lakh-midi-clean?resource=download
-    """
+    Extracts features from MIDI files located in the LMD-matched directory structure.
 
-    md5_to_track_id: dict[str, str] = utils._md5_to_track_id(match_scores_path)
-    known_md5s = set(md5_to_track_id.keys())  # for O(1) lookups
+    Expected directory pattern:
+    lmd_matched/X/Y/Z/TRXXXX.../
+        ├── file1.mid
+        ├── file2.mid
+        └── ...
+
+    Where the folder name 'TRXXXX...' is the MSD track_id.
+    """
 
     files_walked: int = 0
 
-    print("Analyzing MIDI files...")
+    print("Analyzing LMD-matched MIDI files...")
+    assert valid_track_ids is not None
+
     for root, dirs, files in tqdm(os.walk(midi_files_path)):
         for file in files:
+            if not (file.endswith(".mid") or file.endswith(".midi")):
+                continue
+
             if limit is not None and files_walked >= limit:
+                print(f"Reached file limit: {limit}")
                 return
-            if file.endswith("midi") or file.endswith("mid"):
-                full_path = os.path.join(root, file)
-                try:
-                    md5 = utils._md5(full_path)
-                    if md5 not in known_md5s:
-                        continue
 
-                    features = _extract_data_from_midi(midi_file_path=full_path)
+            full_path = os.path.join(root, file)
 
-                    track_id = md5_to_track_id[md5]
+            try:
+                track_id = os.path.basename(os.path.dirname(full_path))
 
-                    files_walked += 1
-                    yield track_id, features
+                if not track_id.startswith("TR"):
+                    continue
 
-                except Exception as e:
-                    pass
-        
-    print(f"Walked {files_walked} files")
+                if track_id not in valid_track_ids:
+                    continue
+
+                features = _extract_data_from_midi(full_path)
+
+                files_walked += 1
+                yield track_id, features
+
+            except Exception:
+                continue
+
+    print(f"Walked {files_walked} MIDI files.")
+
 
 
 def _extract_genres(genres_path: Path | str) -> Generator[str, list[str]]:
