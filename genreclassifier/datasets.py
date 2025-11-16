@@ -6,7 +6,7 @@ from typing import Generator
 
 from tqdm import tqdm
 import pretty_midi
-from .features import Track, MidiFeatures
+from .features import *
 from . import utils 
 
 
@@ -15,17 +15,11 @@ def get_all_track_information(
     match_scores_path: Path | str,
     genres_path: Path | str,
     cache_path: Path | str | None = None,
-    files_walked_count: int | None = None
+    files_walked_count: int | None = None,
+    chunk_size: int = 1000,
 ) -> list[Track]:
-    """
-    Get a list of tracks, with associated genres, from the given local paths.
 
-    Options available to:
-    - cache the saved tracks from previous runs, if the local files have already
-    been analyzed once
-    - limit the number of files counted
-    """
-
+    # If cache exists → load it normally
     if cache_path:
         cached = utils._load_pickle(cache_path)
         if cached is not None:
@@ -40,7 +34,6 @@ def get_all_track_information(
                 if len(parts) >= 2:
                     valid_track_ids.add(parts[0])
 
-    # Features dict
     midi_features = dict(_extract_midi_files(
         midi_files_path=midi_files_path,
         match_scores_path=match_scores_path,
@@ -48,12 +41,26 @@ def get_all_track_information(
         valid_track_ids=valid_track_ids
     ))
 
-    # Iterate over features dict, creating tracks
-    tracks: list[Track] = []
+    # ---- NEW: streaming chunk writer ----
+    buffer = []
+    chunk_index = 0
+    base_path = str(cache_path).replace(".pkl", "") if cache_path else None
+
+    def flush_buffer():
+        nonlocal chunk_index
+        if not buffer or not base_path:
+            return
+        out_path = f"{base_path}_{chunk_index}.pkl"
+        utils._cache_pickle(buffer, out_path)
+        print(f"Saved chunk {chunk_index} with {len(buffer)} tracks")
+        buffer.clear()
+        chunk_index += 1
+
+    # ---- iterate and stream-save ----
     for track_id, genres in _extract_genres(genres_path):
         if track_id in midi_features:
-            for genre in genres:  # multiple possible genres
-                tracks.append(
+            for genre in genres:
+                buffer.append(
                     Track(
                         track_id=track_id,
                         genre=genre,
@@ -61,12 +68,17 @@ def get_all_track_information(
                     )
                 )
 
-    if cache_path:
-        utils._cache_pickle(tracks, cache_path)
-        print(f"Saved {len(tracks)} tracks to cache: {cache_path}")
+                # flush memory every chunk_size
+                if len(buffer) >= chunk_size:
+                    flush_buffer()
 
+    # flush remainder
+    flush_buffer()
 
-    return tracks
+    print("Finished streaming and saving track chunks.")
+
+    # Return nothing (or paths), because loading later is cheaper
+    return []
 
 ###
 # Helpers
@@ -87,13 +99,26 @@ def _extract_data_from_midi(midi_file_path: Path | str):
 
     lyrics: bool = len(midi_data.lyrics) > 0
 
+    length = midi_data.get_end_time()
+
+    rhythm = compute_rhythm_features(midi_data, length)
+    harmony = compute_harmony_features(midi_data)
+    melody = compute_melody_features(midi_data, length)
+    instr_strength = compute_instrument_strength(midi_data)
+    structure = compute_structure_features(midi_data)
+
     features = MidiFeatures(
         tempo = midi_data.estimate_tempo(),
         instruments = instruments,
         key_signatures = key_signatures,
         time_signatures = time_signatures,
         lyrics = lyrics,
-        length = midi_data.get_end_time()
+        length = length,
+        rhythm = rhythm,
+        harmony = harmony,
+        melody = melody,
+        instr_strength = instr_strength,
+        structure = structure,
     )
     return features
 
