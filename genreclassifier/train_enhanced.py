@@ -346,79 +346,89 @@ def train_model(tracks: list[Track],
     else:
         criterion = nn.CrossEntropyLoss()
     
-    # Optimizer with weight decay (L2 regularization)
+    # Optimizer with weight decay
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-    # More aggressive learning rate scheduling
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=8, min_lr=1e-6)
-    
-    # Training loop with early stopping
+
+    # OneCycle learning rate schedule (stepped per batch)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=learning_rate * 10,
+        epochs=num_epochs,
+        steps_per_epoch=len(train_loader)
+    )
+
+    # Tracking
     history = {
         'train_loss': [], 'train_acc': [],
         'val_loss': [], 'val_acc': []
     }
-    
-    best_val_loss = float('inf')
-    best_val_acc = 0.0
+
+    best_score = -1
     patience_counter = 0
     best_model_state = None
-    best_score = -1
-    
+
     print("\nStarting training...")
     for epoch in range(num_epochs):
-        # Train with gradient clipping
-        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, max_grad_norm=1.0)
-        
-        # Validate
-        val_loss, val_acc, val_labels, val_preds = evaluate(model, val_loader, criterion, device)
 
-        # F1 score as fairness metric
+        # Training
+        model.train()
+        running_loss = 0
+        correct = 0
+        total = 0
+
+        for X_batch, y_batch in train_loader:
+            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+
+            optimizer.zero_grad()
+            preds = model(X_batch)
+            loss = criterion(preds, y_batch)
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            scheduler.step()
+
+            running_loss += loss.item() * X_batch.size(0)
+            _, predicted = preds.max(1)
+            correct += (predicted == y_batch).sum().item()
+            total += y_batch.size(0)
+
+        train_loss = running_loss / total
+        train_acc = 100.0 * correct / total
+
+        # Validation
+        val_loss, val_acc, val_labels, val_preds = evaluate(model, val_loader, criterion, device)
         val_macro_f1 = f1_score(val_labels, val_preds, average='macro', zero_division=0)
 
-        # Combine accuracy + fairness
-        alpha = 0.5  # how much weight to give fairness
-        combined_score = alpha * val_macro_f1 + (1 - alpha) * (val_acc / 100.0)
-        
-        # Learning rate scheduling
-        scheduler.step(val_loss)
-        
-        # Record history
+        # Combined validation score
+        combined_score = 0.5 * val_macro_f1 + 0.5 * (val_acc / 100.0)
+
+        # Early stopping check
+        improved = combined_score > best_score
+        if improved:
+            best_score = combined_score
+            best_model_state = model.state_dict().copy()
+            patience_counter = 0
+        else:
+            patience_counter += 1
+
+        # Logging
         history['train_loss'].append(train_loss)
         history['train_acc'].append(train_acc)
         history['val_loss'].append(val_loss)
         history['val_acc'].append(val_acc)
-        
-        # Early stopping based on validation accuracy (better metric for classification)
-        improved = False
 
-        if combined_score > best_score:
-            best_score = combined_score
-            best_val_loss = val_loss
-            patience_counter = 0
-            best_model_state = model.state_dict().copy()
-            improved = True
-        else:
-            patience_counter += 1
-
-        
-        if not improved:
-            patience_counter += 1
-        
         if (epoch + 1) % 5 == 0 or epoch == 0:
-            current_lr = optimizer.param_groups[0]['lr']
-            improvement = "✓" if improved else " "
-            print(f"Epoch {epoch+1}/{num_epochs} (LR: {current_lr:.6f}) {improvement}: "
+            lr_now = optimizer.param_groups[0]['lr']
+            flag = "✓" if improved else " "
+            print(
+                f"Epoch {epoch+1}/{num_epochs} (LR: {lr_now:.6f}) {flag}: "
                 f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, "
                 f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%, "
-                f"Val MacroF1: {val_macro_f1:.4f}, Combined: {combined_score:.4f}")
+                f"MacroF1: {val_macro_f1:.4f}, Combined: {combined_score:.4f}"
+            )
 
-        
-        if patience_counter >= early_stopping_patience:
-            print(f"\nEarly stopping at epoch {epoch+1}")
-            break
-    
-    # Load best model
-    if best_model_state:
-        model.load_state_dict(best_model_state)
+
     
     # Final evaluation on test set
     print("\nEvaluating on test set...")
