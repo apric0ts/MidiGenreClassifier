@@ -6,14 +6,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, random_split
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix, f1_score
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 from typing import Tuple, Dict, Optional
 from collections import Counter
 from dataclasses import replace
 
-from .features import Track
+from .features import Track, NORMALIZE_MASK
 
 
 def combine_rare_genres(tracks: list[Track], min_samples: int = 20) -> list[Track]:
@@ -39,17 +39,44 @@ def combine_rare_genres(tracks: list[Track], min_samples: int = 20) -> list[Trac
     
     return combined_tracks
 
+def make_oversampling_sampler(dataset):
+    """
+    Create a WeightedRandomSampler that oversamples minority classes.
+    Weighted by inverse class frequency.
+    """
+    labels = dataset.y.numpy()
+    class_sample_count = np.array([np.sum(labels == c) for c in np.unique(labels)])
+    
+    # inverse frequency
+    class_weights = 1. / class_sample_count
+    
+    # assign weight to each sample
+    sample_weights = np.array([class_weights[label] for label in labels])
+    sample_weights = torch.from_numpy(sample_weights).double()
+    
+    sampler = torch.utils.data.WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True
+    )
+    
+    return sampler
+
 
 class NormalizedTrackDataset(Dataset):
     """
     Enhanced PyTorch dataset with feature normalization and genre mapping.
     """
-    def __init__(self, tracks: list[Track], scaler: Optional[StandardScaler] = None, 
-                 genre_to_idx: Optional[Dict[str, int]] = None):
+    def __init__(
+        self, 
+        tracks: list[Track], 
+        scaler: Optional[StandardScaler] = None, 
+        genre_to_idx: Optional[Dict[str, int]] = None
+    ):
         self.X = []
         self.y = []
-        
-        # Create or use provided genre mapping
+
+        # Create or use genre mapping
         if genre_to_idx is None:
             genres = sorted(set(t.genre for t in tracks))
             self.genre_to_idx = {g: i for i, g in enumerate(genres)}
@@ -57,59 +84,65 @@ class NormalizedTrackDataset(Dataset):
         else:
             self.genre_to_idx = genre_to_idx
             self.idx_to_genre = {i: g for g, i in genre_to_idx.items()}
-        
+
         # Extract feature vectors
         for t in tracks:
             self.X.append(t.features.extract_feature_vector())
             self.y.append(self.genre_to_idx[t.genre])
-        
+
         self.X = np.array(self.X, dtype=np.float32)
         self.y = np.array(self.y, dtype=np.int64)
-        
-        # Normalize only the continuous features (first 5: tempo, length, lyrics, avg_num, avg_den)
-        # Keep one-hot encodings (instruments, keys) as-is
+
+        self.normalize_mask = NORMALIZE_MASK
+
+        # Fit scaler only on masked continuous features
         if scaler is None:
             self.scaler = StandardScaler()
-            # Fit only on continuous features
-            self.scaler.fit(self.X[:, :5])
+            self.scaler.fit(self.X[:, self.normalize_mask])
         else:
             self.scaler = scaler
-        
-        # Transform only continuous features
+
+        # Apply normalization
         X_normalized = self.X.copy()
-        X_normalized[:, :5] = self.scaler.transform(self.X[:, :5])
-        
+        X_normalized[:, self.normalize_mask] = self.scaler.transform(
+            self.X[:, self.normalize_mask]
+        )
+
         # Convert to tensors
         self.X = torch.tensor(X_normalized, dtype=torch.float32)
         self.y = torch.tensor(self.y, dtype=torch.long)
-        
+
         self.num_classes = len(self.genre_to_idx)
-    
+
     def __len__(self):
         return len(self.y)
-    
+
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
-    
+
     def get_class_weights(self) -> torch.Tensor:
         """Calculate class weights for handling imbalanced data using inverse frequency."""
         class_counts = Counter(self.y.numpy())
         total = len(self.y)
-        weights = torch.zeros(self.num_classes)
-        for idx, count in class_counts.items():
-            # Inverse frequency weighting: more weight to rare classes
-            weights[idx] = total / (self.num_classes * count)
-        # Normalize weights to prevent extreme values
-        weights = weights / weights.mean()
+        freq = np.array([class_counts[i] for i in range(self.num_classes)])
+        weights = 1 / np.log(1.2 + freq)
+        weights = torch.tensor(weights / weights.mean(), dtype=torch.float32)
         return weights
+
 
 
 class EnhancedTrackToGenreMLP(nn.Module):
     """
     Enhanced MLP with dropout, batch normalization, and better architecture.
     """
-    def __init__(self, input_dim: int, num_classes: int, hidden_dims: list = [256, 128, 64], 
-                 dropout: float = 0.3, use_batch_norm: bool = True):
+    def __init__(
+        self, 
+        input_dim: int, 
+        num_classes: int, 
+        hidden_dims: list = [512, 256, 128], #[256, 128, 64], 
+        dropout: float = 0.15,
+        use_batch_norm: bool = True
+    ):
         super().__init__()
         
         layers = []
@@ -237,48 +270,62 @@ def train_model(tracks: list[Track],
     if combine_rare:
         tracks = combine_rare_genres(tracks, min_samples=min_samples_per_genre)
     
-    # Create full dataset
+
     full_dataset = NormalizedTrackDataset(tracks)
-    num_classes = full_dataset.num_classes
     input_dim = full_dataset.X.shape[1]
-    
+    num_classes = full_dataset.num_classes
+
+
     print(f"Total samples: {len(full_dataset)}")
-    print(f"Number of classes: {num_classes}")
+    print(f"Number of classes: {full_dataset.num_classes}")
     print(f"Input dimension: {input_dim}")
     print(f"Classes: {list(full_dataset.genre_to_idx.keys())}")
-    
-    # Split dataset
+
     total_size = len(full_dataset)
     train_size = int(train_split * total_size)
     val_size = int(val_split * total_size)
     test_size = total_size - train_size - val_size
-    
-    train_dataset, val_dataset, test_dataset = random_split(
-        full_dataset, [train_size, val_size, test_size],
+
+    train_subset, val_subset, test_subset = random_split(
+        full_dataset,
+        [train_size, val_size, test_size],
         generator=torch.Generator().manual_seed(42)
     )
-    
-    # Create datasets with proper scaler and genre mapping
-    # Extract actual data from subsets
-    train_indices = train_dataset.indices
-    val_indices = val_dataset.indices
-    test_indices = test_dataset.indices
-    
-    train_tracks = [tracks[i] for i in train_indices]
-    val_tracks = [tracks[i] for i in val_indices]
-    test_tracks = [tracks[i] for i in test_indices]
-    
-    # Create datasets with shared scaler (fit on train only)
-    train_dataset = NormalizedTrackDataset(train_tracks)
-    val_dataset = NormalizedTrackDataset(val_tracks, scaler=train_dataset.scaler, 
-                                        genre_to_idx=train_dataset.genre_to_idx)
-    test_dataset = NormalizedTrackDataset(test_tracks, scaler=train_dataset.scaler,
-                                         genre_to_idx=train_dataset.genre_to_idx)
-    
+
+    # Making sure to use the correct indices for the train, val, and test datasets
+    train_indices = train_subset.indices
+    val_indices = val_subset.indices
+    test_indices = test_subset.indices
+
+    train_dataset = NormalizedTrackDataset(
+        [tracks[i] for i in train_indices],
+        scaler=full_dataset.scaler,
+        genre_to_idx=full_dataset.genre_to_idx
+    )
+
+    val_dataset = NormalizedTrackDataset(
+        [tracks[i] for i in val_indices],
+        scaler=full_dataset.scaler,
+        genre_to_idx=full_dataset.genre_to_idx
+    )
+
+    test_dataset = NormalizedTrackDataset(
+        [tracks[i] for i in test_indices],
+        scaler=full_dataset.scaler,
+        genre_to_idx=full_dataset.genre_to_idx
+    )
+
     print(f"Train: {len(train_dataset)}, Val: {len(val_dataset)}, Test: {len(test_dataset)}")
     
     # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    sampler = make_oversampling_sampler(train_dataset)
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        sampler=sampler
+    )
+
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     
@@ -314,6 +361,7 @@ def train_model(tracks: list[Track],
     best_val_acc = 0.0
     patience_counter = 0
     best_model_state = None
+    best_score = -1
     
     print("\nStarting training...")
     for epoch in range(num_epochs):
@@ -321,7 +369,14 @@ def train_model(tracks: list[Track],
         train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, max_grad_norm=1.0)
         
         # Validate
-        val_loss, val_acc, _, _ = evaluate(model, val_loader, criterion, device)
+        val_loss, val_acc, val_labels, val_preds = evaluate(model, val_loader, criterion, device)
+
+        # F1 score as fairness metric
+        val_macro_f1 = f1_score(val_labels, val_preds, average='macro', zero_division=0)
+
+        # Combine accuracy + fairness
+        alpha = 0.5  # how much weight to give fairness
+        combined_score = alpha * val_macro_f1 + (1 - alpha) * (val_acc / 100.0)
         
         # Learning rate scheduling
         scheduler.step(val_loss)
@@ -334,17 +389,16 @@ def train_model(tracks: list[Track],
         
         # Early stopping based on validation accuracy (better metric for classification)
         improved = False
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+
+        if combined_score > best_score:
+            best_score = combined_score
             best_val_loss = val_loss
             patience_counter = 0
             best_model_state = model.state_dict().copy()
             improved = True
-        elif val_loss < best_val_loss:
-            # Also track best loss as backup
-            best_val_loss = val_loss
-            if best_model_state is None:
-                best_model_state = model.state_dict().copy()
+        else:
+            patience_counter += 1
+
         
         if not improved:
             patience_counter += 1
@@ -353,8 +407,10 @@ def train_model(tracks: list[Track],
             current_lr = optimizer.param_groups[0]['lr']
             improvement = "✓" if improved else " "
             print(f"Epoch {epoch+1}/{num_epochs} (LR: {current_lr:.6f}) {improvement}: "
-                  f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, "
-                  f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}% (Best: {best_val_acc:.2f}%)")
+                f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%, "
+                f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%, "
+                f"Val MacroF1: {val_macro_f1:.4f}, Combined: {combined_score:.4f}")
+
         
         if patience_counter >= early_stopping_patience:
             print(f"\nEarly stopping at epoch {epoch+1}")

@@ -6,6 +6,7 @@ from collections import Counter
 
 import genreclassifier as gc
 from genreclassifier.train_enhanced import train_model
+# from genreclassifier.training2 import train_model
 
 
 if __name__ == "__main__":
@@ -33,7 +34,7 @@ if __name__ == "__main__":
         midi_files_path, 
         match_scores_path, 
         genres_path, 
-        cache_path="midi_features_cache_large.pkl",
+        cache_path="midi_features_cache_2.pkl",
         files_walked_count=None  # None means get all info
     )
     
@@ -59,12 +60,11 @@ if __name__ == "__main__":
         batch_size=32,            # Adjust based on your GPU memory
         num_epochs=200,           # Maximum epochs (early stopping will likely stop earlier)
         learning_rate=5e-4,       # Lower learning rate for better convergence
-        hidden_dims=[384, 192, 96],  # Balanced network architecture
-        dropout=0.35,             # Balanced dropout for regularization
-        use_class_weights=True,   # Handle imbalanced classes
+        hidden_dims=[512, 384, 256, 128],  # Balanced network architecture
+        dropout=0.3,             # Balanced dropout for regularization
         early_stopping_patience=20,  # More patience for better convergence
         combine_rare=True,        # Combine rare genres into 'Other'
-        min_samples_per_genre=15  # Minimum samples to keep a genre separate
+        min_samples_per_genre=100  # Minimum samples to keep a genre separate
     )
     
     # Display results

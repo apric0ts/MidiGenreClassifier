@@ -31,7 +31,7 @@ if __name__ == "__main__":
         midi_files_path, 
         match_scores_path, 
         genres_path, 
-        cache_path = "midi_features_cache.pkl",
+        cache_path = "midi_features_cache_2.pkl",
         files_walked_count=None # change this number to adjust the breadth of midi files we're analyzing. None means get all info
     )
     
@@ -56,10 +56,12 @@ if __name__ == "__main__":
     instruments = Counter([gc.PROGRAM_ID_TO_INSTRUMENT_NAME[id] for id in instrument_ids])
     print(instruments)
     print(f"There are {len(instruments)} unique instruments across these tracks")
+
+    print("")
     
     
     # Try out the nn stuff:
-    dataset = gc.TrackDataset(tracks)
+    # dataset = gc.TrackDataset(tracks)
 
-    input_dim = dataset.X.shape[1] # dataset.X is [num_tracks, num_features]
-    model = gc.TrackToGenreMLP(input_dim=input_dim, num_classes=len(genres))
+    # input_dim = dataset.X.shape[1] # dataset.X is [num_tracks, num_features]
+    # model = gc.TrackToGenreMLP(input_dim=input_dim, num_classes=len(genres))
