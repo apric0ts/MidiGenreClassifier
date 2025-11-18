@@ -3,10 +3,13 @@ Script to run the enhanced training pipeline.
 """
 import os
 from collections import Counter
+import torch
+from torch.utils.data import DataLoader
+from sklearn.metrics import classification_report
 
 import genreclassifier as gc
 from genreclassifier.train_enhanced import train_model
-# from genreclassifier.training2 import train_model
+from visualizations import generate_all_visualizations
 
 
 if __name__ == "__main__":
@@ -35,7 +38,7 @@ if __name__ == "__main__":
         match_scores_path, 
         genres_path, 
         cache_path="midi_features_cache_2.pkl",
-        files_walked_count=None  # None means get all info
+        files_walked_count=None  
     )
     
     print(f"\nLoaded {len(tracks)} tracks")
@@ -54,17 +57,19 @@ if __name__ == "__main__":
     
     results = train_model(
         tracks=tracks,
-        train_split=0.7,          # 70% for training
-        val_split=0.15,           # 15% for validation
-        test_split=0.15,          # 15% for testing
-        batch_size=32,            # Adjust based on your GPU memory
-        num_epochs=200,           # Maximum epochs (early stopping will likely stop earlier)
-        learning_rate=5e-4,       # Lower learning rate for better convergence
-        hidden_dims=[512, 384, 256, 128],  # Balanced network architecture
-        dropout=0.3,             # Balanced dropout for regularization
-        early_stopping_patience=20,  # More patience for better convergence
-        combine_rare=True,        # Combine rare genres into 'Other'
-        min_samples_per_genre=100  # Minimum samples to keep a genre separate
+        train_split=0.7,
+        val_split=0.15,
+        test_split=0.15,
+        batch_size=32,
+        num_epochs=200,
+        learning_rate=5e-4,
+        hidden_dims=[256, 128, 64],
+        dropout=0.3,
+        early_stopping_patience=20,
+        combine_rare=True,
+        min_samples_per_genre=100,
+        use_class_weights=True,
+        device=None
     )
     
     # Display results
@@ -80,24 +85,62 @@ if __name__ == "__main__":
     print(f"  Recall: {test_metrics['recall']:.4f}")
     print(f"  F1-Score: {test_metrics['f1_score']:.4f}")
     
-    # Optionally save the model (skip prompt in non-interactive mode)
+    # Per-class performance report
+    print("\n" + "=" * 60)
+    print("Per-Class Performance:")
+    print("=" * 60)
+    
+    # Get predictions
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    test_loader = DataLoader(results['test_dataset'], batch_size=32, shuffle=False)
+    model = results['model']
+    model.eval()
+    
+    all_preds = []
+    all_labels = []
+    
+    with torch.no_grad():
+        for X_batch, y_batch in test_loader:
+            X_batch = X_batch.to(device)
+            outputs = model(X_batch)
+            _, predicted = torch.max(outputs.data, 1)
+            all_preds.extend(predicted.cpu().numpy())
+            all_labels.extend(y_batch.numpy())
+    
+    print(classification_report(
+        all_labels,
+        all_preds,
+        target_names=list(results['idx_to_genre'].values()),
+        zero_division=0
+    ))
+    
+    # Ask about visualizations
+    try:
+        generate_viz = input("\nGenerate visualizations? (y/n): ").lower().strip()
+    except (EOFError, KeyboardInterrupt):
+        generate_viz = 'n'
+        print("\n(Skipping visualizations)")
+    
+    if generate_viz == 'y':
+        generate_all_visualizations(results, all_labels, all_preds, device)
+    
+    #save model?
     try:
         save_model = input("\nSave model? (y/n): ").lower().strip()
     except (EOFError, KeyboardInterrupt):
         save_model = 'n'
-        print("\n(Skipping model save in non-interactive mode)")
+        print("\n(Skipping model save)")
     
     if save_model == 'y':
-        import torch
         model_path = "trained_genre_classifier.pth"
         torch.save({
             'model_state_dict': results['model'].state_dict(),
             'genre_to_idx': results['genre_to_idx'],
             'idx_to_genre': results['idx_to_genre'],
             'scaler': results['train_dataset'].scaler,
-            'test_metrics': test_metrics
+            'test_metrics': test_metrics,
+            'history': results['history'] 
         }, model_path)
         print(f"Model saved to {model_path}")
     
     print("\nDone!")
-
