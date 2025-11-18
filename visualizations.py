@@ -174,10 +174,7 @@ def generate_all_visualizations(results, all_labels, all_preds, device):
     # plot 3: Per-class metrics
     plot_per_class_metrics(all_labels, all_preds, genre_names)
     
-    # Plot 4: Model comparison
-    plot_model_comparison()
-    
-    # Plot 5: ROC curves
+    # Plot 4: ROC curves
     test_loader = torch.utils.data.DataLoader(
         results['test_dataset'], 
         batch_size=32, 
