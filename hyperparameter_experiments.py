@@ -239,7 +239,7 @@ if __name__ == "__main__":
     experiments = []
     
     # Experiment 1: Baseline (fewer epochs for speed)
-    print("\n🔬 Running Experiment 1/3...")
+    print("\n Running Experiment 1/3...")
     experiments.append(run_experiment(
         tracks, 
         "Baseline (LR=5e-4)", 
@@ -248,7 +248,7 @@ if __name__ == "__main__":
     ))
     
     # Experiment 2: Test overfitting with more epochs
-    print("\n🔬 Running Experiment 2/3...")
+    print("\n Running Experiment 2/3...")
     experiments.append(run_experiment(
         tracks, 
         "More Epochs (LR=5e-4)", 
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     ))
     
     # Experiment 3: Different learning rate
-    print("\n🔬 Running Experiment 3/3...")
+    print("\n Running Experiment 3/3...")
     experiments.append(run_experiment(
         tracks, 
         "Higher LR (LR=1e-3)", 
@@ -271,4 +271,4 @@ if __name__ == "__main__":
     print("=" * 60)
     plot_all_experiments(experiments)
     
-    print("\n✅ All experiments complete!")
+    print("\nAll experiments complete!")
