@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import genreclassifier as gc
 from genreclassifier.train_enhanced import train_model
 from visualizations import generate_all_visualizations
+from embedding_visualization import run_embedding_visualizations
+# ===============================
 
 # Create visualizations folder
 os.makedirs('visualizations/explainability', exist_ok=True)
@@ -28,7 +30,7 @@ def run_standalone_explainability(results, test_loader, device):
     model = results['model']
     genre_names = list(results['idx_to_genre'].values())
     
-    # 1. Feature Importance Analysis
+    # 1. Feature Importance
     print("1. Analyzing feature importance...")
     
     feature_importances = []
@@ -39,22 +41,17 @@ def run_standalone_explainability(results, test_loader, device):
         
         outputs = model(X_batch)
         
-        # Use gradients w.r.t. input features
         model.zero_grad()
         outputs.sum().backward()
         
-        # Average absolute gradients across batch
         gradients = X_batch.grad.abs().mean(dim=0).cpu().numpy()
         feature_importances.append(gradients)
     
-    # Average across all batches
     avg_importances = np.mean(feature_importances, axis=0)
     
-    # Plot top features
     top_n = min(15, len(avg_importances))
     sorted_idx = avg_importances.argsort()[::-1][:top_n]
     
-    # Create feature names
     num_features = avg_importances.shape[0]
     feature_names = [f"Feature_{i}" for i in range(num_features)]
     
@@ -72,15 +69,14 @@ def run_standalone_explainability(results, test_loader, device):
     plt.gca().invert_yaxis()
     plt.grid(True, alpha=0.3, axis='x')
     
-    # Add value labels
     for bar, score in zip(bars, top_scores):
         plt.text(bar.get_width() + 0.001, bar.get_y() + bar.get_height()/2,
                 f'{score:.4f}', ha='left', va='center', fontsize=9)
     
     plt.tight_layout()
-    plt.savefig('visualizations/explainability/feature_importance.png', dpi=300, bbox_inches='tight')
-    plt.show()
-    print("✓ Saved: visualizations/explainability/feature_importance.png")
+    plt.savefig('visualizations/explainability/feature_importance.png', dpi=300)
+    plt.close()
+    print("Saved: visualizations/explainability/feature_importance.png")
     
     # 2. Confidence Analysis
     print("2. Analyzing prediction confidence...")
@@ -95,7 +91,6 @@ def run_standalone_explainability(results, test_loader, device):
             probabilities = torch.softmax(outputs, dim=1)
             confidences, predictions = torch.max(probabilities, 1)
             
-            # Check if predictions are correct
             correct = (predictions.cpu() == y_batch).numpy()
             
             all_confidences.extend(confidences.cpu().numpy())
@@ -104,7 +99,6 @@ def run_standalone_explainability(results, test_loader, device):
     all_confidences = np.array(all_confidences)
     all_correct = np.array(all_correct)
     
-    # Plot confidence distributions
     plt.figure(figsize=(12, 5))
     
     plt.subplot(1, 2, 1)
@@ -115,25 +109,24 @@ def run_standalone_explainability(results, test_loader, device):
     plt.grid(True, alpha=0.3)
     
     plt.subplot(1, 2, 2)
-    if len(all_correct) > 0:
-        correct_confidences = all_confidences[all_correct] if np.any(all_correct) else np.array([])
-        incorrect_confidences = all_confidences[~all_correct] if np.any(~all_correct) else np.array([])
-        
-        if len(correct_confidences) > 0:
-            plt.hist(correct_confidences, bins=15, alpha=0.7, label='Correct', color='green')
-        if len(incorrect_confidences) > 0:
-            plt.hist(incorrect_confidences, bins=15, alpha=0.7, label='Incorrect', color='red')
-        
-        plt.xlabel('Prediction Confidence', fontweight='bold')
-        plt.ylabel('Frequency', fontweight='bold')
-        plt.title('Confidence: Correct vs Incorrect', fontweight='bold')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
+    correct_confidences = all_confidences[all_correct] if np.any(all_correct) else np.array([])
+    incorrect_confidences = all_confidences[~all_correct] if np.any(~all_correct) else np.array([])
+    
+    if len(correct_confidences) > 0:
+        plt.hist(correct_confidences, bins=15, alpha=0.7, label='Correct', color='green')
+    if len(incorrect_confidences) > 0:
+        plt.hist(incorrect_confidences, bins=15, alpha=0.7, label='Incorrect', color='red')
+    
+    plt.xlabel('Prediction Confidence', fontweight='bold')
+    plt.ylabel('Frequency', fontweight='bold')
+    plt.title('Confidence: Correct vs Incorrect', fontweight='bold')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('visualizations/explainability/confidence_analysis.png', dpi=300, bbox_inches='tight')
-    plt.show()
-    print("✓ Saved: visualizations/explainability/confidence_analysis.png")
+    plt.savefig('visualizations/explainability/confidence_analysis.png', dpi=300)
+    plt.close()
+    print("Saved: visualizations/explainability/confidence_analysis.png")
     
     # 3. Misclassification Analysis
     print("3. Analyzing misclassifications...")
@@ -150,16 +143,13 @@ def run_standalone_explainability(results, test_loader, device):
                 if true_idx != pred_idx:
                     confusion_pairs.append((true_idx, pred_idx))
     
-    # Count confusion frequencies
     confusion_counts = {}
     for true_idx, pred_idx in confusion_pairs:
         pair = (true_idx, pred_idx)
         confusion_counts[pair] = confusion_counts.get(pair, 0) + 1
     
-    # Get top confusions
     top_confusions = sorted(confusion_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     
-    # Plot
     if top_confusions:
         plt.figure(figsize=(12, 6))
         
@@ -181,24 +171,22 @@ def run_standalone_explainability(results, test_loader, device):
         plt.gca().invert_yaxis()
         plt.grid(True, alpha=0.3, axis='x')
         
-        # Add value labels
         for bar, count in zip(bars, counts):
             plt.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height()/2,
                     f'{count}', ha='left', va='center', fontsize=10, fontweight='bold')
         
         plt.tight_layout()
-        plt.savefig('visualizations/explainability/misclassification_analysis.png', dpi=300, bbox_inches='tight')
-        plt.show()
-        print("✓ Saved: visualizations/explainability/misclassification_analysis.png")
+        plt.savefig('visualizations/explainability/misclassification_analysis.png', dpi=300)
+        plt.close()
+        print("Saved: visualizations/explainability/misclassification_analysis.png")
     else:
-        print("✓ No misclassifications found in test set!")
+        print("No misclassifications found in test set!")
     
-    # 4. Genre-wise Performance Analysis
+    # 4. Genre-wise Performance
     print("4. Analyzing genre-wise performance...")
     
     genre_correct = {genre: 0 for genre in genre_names}
     genre_total = {genre: 0 for genre in genre_names}
-    genre_confidence = {genre: [] for genre in genre_names}
     
     with torch.no_grad():
         for X_batch, y_batch in test_loader:
@@ -208,13 +196,11 @@ def run_standalone_explainability(results, test_loader, device):
             confidences, predictions = torch.max(probabilities, 1)
             
             for true_idx, pred_idx, conf in zip(y_batch.numpy(), predictions.cpu().numpy(), confidences.cpu().numpy()):
-                true_genre = genre_names[true_idx]
-                genre_total[true_genre] += 1
-                genre_confidence[true_genre].append(conf)
+                g = genre_names[true_idx]
+                genre_total[g] += 1
                 if true_idx == pred_idx:
-                    genre_correct[true_genre] += 1
+                    genre_correct[g] += 1
     
-    # Calculate accuracy per genre
     genre_accuracy = {}
     for genre in genre_names:
         if genre_total[genre] > 0:
@@ -222,7 +208,6 @@ def run_standalone_explainability(results, test_loader, device):
         else:
             genre_accuracy[genre] = 0
     
-    # Plot genre performance
     plt.figure(figsize=(10, 6))
     genres_sorted = sorted(genre_accuracy.items(), key=lambda x: x[1])
     genres_list = [g[0] for g in genres_sorted]
@@ -236,30 +221,27 @@ def run_standalone_explainability(results, test_loader, device):
     plt.xlim(0, 1.0)
     plt.grid(True, alpha=0.3, axis='x')
     
-    # Add value labels
     for bar, acc in zip(bars, accuracies):
         plt.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2,
                 f'{acc:.2f}', ha='left', va='center', fontsize=10, fontweight='bold')
     
     plt.tight_layout()
-    plt.savefig('visualizations/explainability/genre_accuracy.png', dpi=300, bbox_inches='tight')
-    plt.show()
-    print("✓ Saved: visualizations/explainability/genre_accuracy.png")
+    plt.savefig('visualizations/explainability/genre_accuracy.png', dpi=300)
+    plt.close()
+    print("Saved: visualizations/explainability/genre_accuracy.png")
     
-    # Print statistics
+    # Summary
     print("\n" + "=" * 50)
     print("EXPLAINABILITY SUMMARY")
     print("=" * 50)
     print(f"Total test samples: {len(all_confidences)}")
     print(f"Average confidence: {np.mean(all_confidences):.3f}")
     
-    if len(all_correct) > 0 and np.any(all_correct):
-        correct_confidences = all_confidences[all_correct]
-        print(f"Correct predictions confidence: {np.mean(correct_confidences):.3f}")
+    if np.any(all_correct):
+        print(f"Correct predictions confidence: {np.mean(all_confidences[all_correct]):.3f}")
     
-    if len(all_correct) > 0 and np.any(~all_correct):
-        incorrect_confidences = all_confidences[~all_correct]
-        print(f"Incorrect predictions confidence: {np.mean(incorrect_confidences):.3f}")
+    if np.any(~all_correct):
+        print(f"Incorrect predictions confidence: {np.mean(all_confidences[~all_correct]):.3f}")
     
     print(f"Number of misclassifications: {len(confusion_pairs)}")
     print(f"Top 3 influential features: {top_features[:3]}")
@@ -271,17 +253,9 @@ def run_standalone_explainability(results, test_loader, device):
     print("=" * 50)
 
 
+# MAIN SCRIPT
 if __name__ == "__main__":
-    """
-    Project structure:
-    outer-folder
-    - MidiGenreClassifier (our repo)
-    - MidiFiles (self explanatory)
-    - matches_scores.json (matching midi files to tracks in MSD)
-    - msd_tagtraum_cd1.cls (genres)
-    """
     
-    # Project root directory (parent of MidiGenreClassifier)
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     midi_files_path = os.path.join(parent_dir, "MidiFiles")
     match_scores_path = os.path.join(parent_dir, "match_scores.json")
@@ -291,7 +265,6 @@ if __name__ == "__main__":
     print("Loading MIDI tracks and features...")
     print("=" * 60)
     
-    # Load tracks (will use cache if available)
     tracks: list[gc.Track] = gc.get_all_track_information(
         midi_files_path, 
         match_scores_path, 
@@ -302,14 +275,12 @@ if __name__ == "__main__":
     
     print(f"\nLoaded {len(tracks)} tracks")
     
-    # Display genre distribution
     genres = Counter([track.genre for track in tracks])
-    print(f"\nGenre distribution:")
+    print("\nGenre distribution:")
     for genre, count in genres.most_common():
         print(f"  {genre}: {count}")
-    print(f"\nTotal unique genres: {len(genres)}")
+    print(f"Total unique genres: {len(genres)}")
     
-    # Train the model
     print("\n" + "=" * 60)
     print("Training model with enhanced pipeline...")
     print("=" * 60)
@@ -331,25 +302,22 @@ if __name__ == "__main__":
         device=None
     )
     
-    # Display results
     print("\n" + "=" * 60)
     print("Training Complete!")
     print("=" * 60)
     
     test_metrics = results['test_metrics']
     
-    print(f"\nFinal Test Set Performance:")
+    print("\nFinal Test Set Performance:")
     print(f"  Accuracy: {test_metrics['accuracy']:.2f}%")
     print(f"  Precision: {test_metrics['precision']:.4f}")
     print(f"  Recall: {test_metrics['recall']:.4f}")
     print(f"  F1-Score: {test_metrics['f1_score']:.4f}")
     
-    # Per-class performance report
     print("\n" + "=" * 60)
     print("Per-Class Performance:")
     print("=" * 60)
     
-    # Get predictions
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     test_loader = DataLoader(results['test_dataset'], batch_size=32, shuffle=False)
     model = results['model']
@@ -376,40 +344,51 @@ if __name__ == "__main__":
     # Ask about visualizations
     try:
         generate_viz = input("\nGenerate visualizations? (y/n): ").lower().strip()
-    except (EOFError, KeyboardInterrupt):
+    except:
         generate_viz = 'n'
-        print("\n(Skipping visualizations)")
     
     if generate_viz == 'y':
         generate_all_visualizations(results, all_labels, all_preds, device)
     
-    # Save model?
+    # Save model
     try:
         save_model = input("\nSave model? (y/n): ").lower().strip()
-    except (EOFError, KeyboardInterrupt):
+    except:
         save_model = 'n'
-        print("\n(Skipping model save)")
     
     if save_model == 'y':
         model_path = "trained_genre_classifier.pth"
         torch.save({
-            'model_state_dict': results['model'].state_dict(),
+            'model_state_dict': model.state_dict(),
             'genre_to_idx': results['genre_to_idx'],
             'idx_to_genre': results['idx_to_genre'],
             'scaler': results['train_dataset'].scaler,
             'test_metrics': test_metrics,
-            'history': results['history'] 
+            'history': results['history']
         }, model_path)
         print(f"Model saved to {model_path}")
     
-    # Ask about explainability analysis
+    # EXPLAINABILITY
     try:
         run_explain = input("\nRun explainability analysis? (y/n): ").lower().strip()
-    except (EOFError, KeyboardInterrupt):
+    except:
         run_explain = 'n'
-        print("\n(Skipping explainability analysis)")
     
     if run_explain == 'y':
         run_standalone_explainability(results, test_loader, device)
-    
+
+    # t-SNE / UMAP
+    try:
+        run_embed = input("\nRun t-SNE/UMAP embedding visualizations? (y/n): ").lower().strip()
+    except:
+        run_embed = 'n'
+
+    if run_embed == 'y':
+        run_embedding_visualizations(
+            model=results['model'],
+            dataset=results['test_dataset'],
+            genre_names=list(results['idx_to_genre'].values()),
+            device=device
+        )
+
     print("\nDone!")
