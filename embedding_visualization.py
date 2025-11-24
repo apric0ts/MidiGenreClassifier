@@ -104,7 +104,7 @@ def run_embedding_visualizations(model, dataset, genre_names, device):
     plt.close()
     print("Saved t-SNE embeddings → visualizations/embeddings/tsne_embeddings.png")
 
-=    # UMAP on LEARNED EMBEDDINGS
+    # UMAP on LEARNED EMBEDDINGS
     print("Running UMAP on learned embeddings...")
     umap_embed = umap.UMAP(n_neighbors=30, min_dist=0.1).fit_transform(learned_embeddings)
 

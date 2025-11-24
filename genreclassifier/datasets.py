@@ -139,7 +139,7 @@ def _extract_midi_files(
     match_scores_path: Path | str,
     valid_track_ids: list,
     limit: int | None = None,
-) -> Generator[str, MidiFeatures]:
+):
     """
     Extracts features from MIDI files located in the LMD-matched directory structure.
     """
@@ -189,7 +189,7 @@ def _extract_midi_files(
 
 
 
-def _extract_genres(genres_path: Path | str) -> Generator[str, list[str]]:
+def _extract_genres(genres_path: Path | str):
     """
     Extracts genres from the CD1 Genre Ground Truth dataset from https://www.tagtraum.com/msd_genre_datasets.html
     at the given path on local machine
