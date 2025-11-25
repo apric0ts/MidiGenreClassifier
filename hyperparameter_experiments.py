@@ -1,6 +1,8 @@
 """
 Quick hyperparameter experiments for MIDI Genre Classifier.
 Tests key configurations to detect overfitting and optimal learning rate.
+
+#AI used to syntax help and debugging
 """
 import os
 from collections import Counter

@@ -1,5 +1,7 @@
 """
-Visualization utilities for MIDI Genre Classifier.
+Visualization for MIDI Genre Classifier.
+
+AI used to help debug and generate graphs
 """
 import matplotlib.pyplot as plt
 import seaborn as sns
