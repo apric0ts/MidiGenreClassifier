@@ -84,7 +84,7 @@ def get_all_track_information(
 # Helpers
 ###
 
-def _extract_data_from_midi(midi_file_path: Path | str):
+def extract_data_from_midi(midi_file_path: Path | str):
     midi_data = pretty_midi.PrettyMIDI(midi_file_path)
 
     # Extract list of instruments from the `pretty_midi.Instrument`
@@ -128,7 +128,7 @@ def _midi_worker(job):
     """Top-level function so it can be pickled for multiprocessing."""
     track_id, full_path = job
     try:
-        features = _extract_data_from_midi(full_path)
+        features = extract_data_from_midi(full_path)
         return (track_id, features)
     except Exception:
         return None
