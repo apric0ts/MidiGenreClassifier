@@ -1,6 +1,6 @@
 """
 Explainability analysis for MIDI Genre Classifier.
-Run this AFTER the training completes to analyze the model.
+AI used to help debug
 """
 import numpy as np
 import matplotlib.pyplot as plt
