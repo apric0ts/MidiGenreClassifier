@@ -1,5 +1,6 @@
 """
 Embedding Visualization Script
+AI used to help debug
 Generates t-SNE and UMAP plots for:
 1. Raw MIDI features
 2. Model-learned embeddings (final hidden layer)
