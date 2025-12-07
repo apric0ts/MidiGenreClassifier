@@ -231,7 +231,7 @@ if __name__ == "__main__":
         midi_files_path, 
         match_scores_path, 
         genres_path, 
-        cache_path="midi_features_cache_2.pkl",
+        cache_path="cache/midi_features_cache.pkl",
         files_walked_count=None
     )
     
