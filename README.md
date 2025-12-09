@@ -29,6 +29,8 @@ pip install -r requirements.txt
 
 ### Data Setup
 
+**NOTE: FOR EASE OF USAGE, you do NOT need to set the datasets up manually to try out the model. We have saved pkl files so that you can run training without setting up the dataset on your computer.**
+
 In the folder containing this repo (parent directory), download the following files:
 - [CD1 Genre Ground Truth](https://www.tagtraum.com/msd_genre_datasets.html) - save as `msd_tagtraum_cd1.cls`
 - [Lakh Midi Kaggle Dataset](https://www.kaggle.com/datasets/nddimension/lmd-matched?resource=download) - extract to `lmd_matched/`
@@ -46,6 +48,15 @@ parent-folder/
 ```
 
 ## Usage
+
+### GUI Interface tool
+
+```bash
+# Activate conda environment
+conda activate music
+# Run GUI
+python main.py
+```
 
 ### Training the Model
 
